@@ -166,11 +166,44 @@ def get_model_size(model: nn.Module, scale="auto"):
     return n_params, scale
 
 
+def get_model_size_from_count(n_params: int, scale: str = "auto"):
+    if scale == "auto":
+        if n_params > 1e9:
+            scale = "B"
+        elif n_params > 1e6:
+            scale = "M"
+        elif n_params > 1e3:
+            scale = "K"
+        else:
+            scale = ""
+
+    if scale == "B":
+        n_params = n_params / 1e9
+    elif scale == "M":
+        n_params = n_params / 1e6
+    elif scale == "K":
+        n_params = n_params / 1e3
+    elif scale == "":
+        pass
+    else:
+        raise NotImplementedError(f"Unknown scale {scale}")
+
+    return n_params, scale
+
+
 def print_model_size(model: nn.Module, name: str = None):
     n_params, scale = get_model_size(model, scale="auto")
     if name is None:
         name = model.__class__.__name__
-    print(f"{name} contains {n_params:.2f}{scale} parameters")
+    
+    # Check if this is a LoRA/PEFT model and show trainable parameters
+    if hasattr(model, 'print_trainable_parameters'):
+        # This is a PEFT model, show both total and trainable parameters
+        trainable_count = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        trainable_params, trainable_scale = get_model_size_from_count(trainable_count, scale="auto")
+        print(f"{name} contains {n_params:.2f}{scale} parameters (trainable: {trainable_params:.2f}{trainable_scale} parameters)")
+    else:
+        print(f"{name} contains {n_params:.2f}{scale} parameters")
 
 
 def create_random_mask(

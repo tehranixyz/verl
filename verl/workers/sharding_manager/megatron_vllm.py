@@ -98,11 +98,16 @@ class MegatronVLLMShardingManager(BaseShardingManager):
         self.offload_param = offload_param
 
         # For AsyncLLM, inference_engine and model_runner are defer initialized in vLLMAsyncRollout.load_model
-        self.model_runner = (
-            self.inference_engine.llm_engine.model_executor.driver_worker.worker.model_runner
-            if self.inference_engine
-            else None
-        )
+        # Check if inference_engine is WorkerWrapperBase (async mode) or LLM (sync mode)
+        if self.inference_engine:
+            if hasattr(self.inference_engine, 'worker'):
+                # Async mode: WorkerWrapperBase has worker attribute
+                self.model_runner = self.inference_engine.worker.model_runner
+            else:
+                # Sync mode: LLM object has llm_engine attribute
+                self.model_runner = self.inference_engine.llm_engine.model_executor.driver_worker.worker.model_runner
+        else:
+            self.model_runner = None
 
         self.model_config = model_config
         self.transformer_config = transformer_config

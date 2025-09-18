@@ -148,12 +148,26 @@ class vLLMRollout(BaseRollout):
 
         lora_kwargs = kwargs.pop("lora_kwargs", {})
         self.lora_kwargs = lora_kwargs
+        
         # copy it to avoid secretly modifying the engine config
         engine_kwargs = (
             {}
             if "engine_kwargs" not in config or "vllm" not in config.engine_kwargs
             else OmegaConf.to_container(deepcopy(config.engine_kwargs.vllm))
         )
+        
+        # Extract LoRA configuration for vLLM 0.10.0 compatibility
+        if lora_kwargs and lora_kwargs.get("enable_lora", False):
+            # vLLM 0.10.0 expects LoRA parameters directly, not in lora_kwargs
+            enable_lora = lora_kwargs.get("enable_lora", False)
+            max_loras = lora_kwargs.get("max_loras", 1)
+            max_lora_rank = lora_kwargs.get("max_lora_rank", 64)
+            # Add LoRA parameters to engine_kwargs for vLLM 0.10.0
+            engine_kwargs.update({
+                "enable_lora": enable_lora,
+                "max_loras": max_loras,
+                "max_lora_rank": max_lora_rank,
+            })
         # For each vLLM engine parameter,
         # - `None` means not setting it, so we pop it, and leave it to vLLM default value
         #    (which can vary across different vLLM versions);
@@ -180,7 +194,6 @@ class vLLMRollout(BaseRollout):
             enable_prefix_caching=True,
             trust_remote_code=trust_remote_code,
             seed=config.get("seed", 0),
-            **lora_kwargs,
             **engine_kwargs,
         )
 
@@ -307,7 +320,13 @@ class vLLMRollout(BaseRollout):
 
         lora_requests = None
         if self.lora_kwargs:
-            lora_int_ids = list(self.inference_engine.llm_engine.list_loras())
+            # Check if inference_engine is WorkerWrapperBase (async mode) or LLM (sync mode)
+            if hasattr(self.inference_engine, 'list_loras'):
+                # Async mode: WorkerWrapperBase has list_loras method directly
+                lora_int_ids = list(self.inference_engine.list_loras())
+            else:
+                # Sync mode: LLM object has llm_engine attribute
+                lora_int_ids = list(self.inference_engine.llm_engine.list_loras())
             if len(lora_int_ids) > 0:
                 lora_int_id = lora_int_ids[0]
                 lora_requests = [

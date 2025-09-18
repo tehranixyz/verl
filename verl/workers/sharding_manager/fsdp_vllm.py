@@ -79,11 +79,16 @@ class FSDPVLLMShardingManager(BaseShardingManager):
         # self.model_runner = inference_engine.llm_engine.model_executor.driver_worker.worker.model_runner if
         # inference_engine else None
 
-        self.model_runner = (
-            self.inference_engine.llm_engine.model_executor.driver_worker.worker.model_runner
-            if self.inference_engine
-            else None
-        )
+        # Check if inference_engine is WorkerWrapperBase (async mode) or LLM (sync mode)
+        if self.inference_engine:
+            if hasattr(self.inference_engine, 'worker'):
+                # Async mode: WorkerWrapperBase has worker attribute
+                self.model_runner = self.inference_engine.worker.model_runner
+            else:
+                # Sync mode: LLM object has llm_engine attribute
+                self.model_runner = self.inference_engine.llm_engine.model_executor.driver_worker.worker.model_runner
+        else:
+            self.model_runner = None
 
         self.model_config = model_config
         self.rollout_config = rollout_config
@@ -291,7 +296,13 @@ class FSDPVLLMShardingManager(BaseShardingManager):
                     peft_config=asdict(peft_config),
                     lora_tensors=updated_params,
                 )
-                self.inference_engine.llm_engine.add_lora(lora_reqest)
+                # Check if inference_engine is WorkerWrapperBase (async mode) or LLM (sync mode)
+                if hasattr(self.inference_engine, 'add_lora'):
+                    # Async mode: WorkerWrapperBase has add_lora method directly
+                    self.inference_engine.add_lora(lora_reqest)
+                else:
+                    # Sync mode: LLM object has llm_engine attribute
+                    self.inference_engine.llm_engine.add_lora(lora_reqest)
                 logger.info(f"vLLM load weights, loaded_params: {len(updated_params)}")
                 return
             else:

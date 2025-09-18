@@ -241,6 +241,23 @@ class AsyncvLLMServer(AsyncServerBase):
         else:
             distributed_executor_backend = None
 
+        # Add LoRA configuration if enabled
+        lora_kwargs = {}
+        # Check for LoRA configuration in the rollout config
+        # The config structure is actor_rollout_ref.rollout, so we need to check the parent config
+        parent_config = self.config  # This is actor_rollout_ref
+        if hasattr(parent_config, 'model') and hasattr(parent_config.model, 'lora_rank') and parent_config.model.lora_rank > 0:
+            lora_kwargs.update({
+                "enable_lora": True,
+                "max_loras": 1,
+                "max_lora_rank": parent_config.model.lora_rank,
+            })
+            print(f"DEBUG: LoRA configuration added to AsyncEngineArgs: {lora_kwargs}")
+        else:
+            print(f"DEBUG: No LoRA configuration found. Parent config keys: {list(parent_config.keys()) if hasattr(parent_config, 'keys') else 'N/A'}")
+            if hasattr(parent_config, 'model'):
+                print(f"DEBUG: Model config keys: {list(parent_config.model.keys()) if hasattr(parent_config.model, 'keys') else 'N/A'}")
+
         engine_args = AsyncEngineArgs(
             model=local_path,
             enable_sleep_mode=config.free_cache_engine,
@@ -260,6 +277,7 @@ class AsyncvLLMServer(AsyncServerBase):
             enable_prefix_caching=True,
             trust_remote_code=trust_remote_code,
             seed=config.get("seed", 0),
+            **lora_kwargs,
         )
 
         # init async llm engine
