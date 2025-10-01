@@ -302,7 +302,78 @@ class FSDPVLLMShardingManager(BaseShardingManager):
                     peft_config=asdict(peft_config),
                     lora_tensors=updated_params,
                 )
+<<<<<<< Updated upstream
                 self.inference_engine.llm_engine.add_lora(lora_reqest)
+=======
+                try:
+                    # Lightweight checksum for diagnostics
+                    sample_items = list(updated_params.items())[:5]
+                    # Avoid heavy ops on CPU tensors; use .abs().mean() as cheap checksum
+                    checksums = [
+                        (k, float(v.detach().abs().mean()) if hasattr(v, "detach") else None)
+                        for k, v in sample_items
+                    ]
+                    logger.info(
+                        f"LoRA update prepared: id={lora_int_id}, num_tensors={len(updated_params)}, checksums(sample)={checksums}"
+                    )
+                except Exception:
+                    pass
+                # In sync mode, inference_engine is an LLM with llm_engine present.
+                # In async mode, inference_engine is a WorkerWrapperBase; use its worker.
+                add_lora_target = None
+                if hasattr(self.inference_engine, "llm_engine"):
+                    add_lora_target = self.inference_engine.llm_engine
+                elif hasattr(self.inference_engine, "worker"):
+                    add_lora_target = self.inference_engine.worker
+                elif hasattr(self.inference_engine, "add_lora"):
+                    add_lora_target = self.inference_engine
+
+                if add_lora_target is None or not hasattr(add_lora_target, "add_lora"):
+                    raise AttributeError(
+                        "No valid add_lora target found on inference_engine (expected llm_engine or worker)."
+                    )
+
+                # If an adapter with the same id already exists, remove it first
+                try:
+                    list_target = add_lora_target
+                    if hasattr(self.inference_engine, "llm_engine"):
+                        list_target = self.inference_engine.llm_engine
+                    elif hasattr(self.inference_engine, "worker"):
+                        list_target = self.inference_engine.worker
+                    if hasattr(list_target, "list_loras"):
+                        existing = set(list_target.list_loras())
+                        logger.info(f"Existing LoRA adapters before update: {sorted(list(existing))}")
+                        if lora_int_id in existing and hasattr(list_target, "remove_lora"):
+                            list_target.remove_lora(lora_int_id)
+                except Exception:
+                    # Best-effort cleanup; continue even if listing/removal fails
+                    pass
+
+                add_lora_target.add_lora(lora_reqest)
+                # Pin the adapter if supported so it becomes the default for inference
+                try:
+                    if hasattr(add_lora_target, "pin_lora"):
+                        add_lora_target.pin_lora(lora_int_id)
+                        logger.info(f"Pinned LoRA adapter id={lora_int_id}")
+                except Exception:
+                    pass
+                try:
+                    post_list = None
+                    if hasattr(add_lora_target, "list_loras"):
+                        post_list = sorted(list(add_lora_target.list_loras()))
+                    elif hasattr(self.inference_engine, "llm_engine") and hasattr(
+                        self.inference_engine.llm_engine, "list_loras"
+                    ):
+                        post_list = sorted(list(self.inference_engine.llm_engine.list_loras()))
+                    elif hasattr(self.inference_engine, "worker") and hasattr(
+                        self.inference_engine.worker, "list_loras"
+                    ):
+                        post_list = sorted(list(self.inference_engine.worker.list_loras()))
+                    if post_list is not None:
+                        logger.info(f"LoRA adapters after update: {post_list}, active={lora_int_id}")
+                except Exception:
+                    pass
+>>>>>>> Stashed changes
                 logger.info(f"vLLM load weights, loaded_params: {len(updated_params)}")
                 return
             else:

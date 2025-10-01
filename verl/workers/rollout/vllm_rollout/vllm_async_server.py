@@ -352,9 +352,39 @@ class AsyncvLLMServer(AsyncServerBase):
         sampling_params["logprobs"] = 0 if sampling_params.pop("logprobs", False) else None
         sampling_params.setdefault("repetition_penalty", self.config.rollout.get("repetition_penalty", 1.0))
         sampling_params = SamplingParams(max_tokens=max_tokens, **sampling_params)
+<<<<<<< Updated upstream
         prompt_ids = _qwen2_5_vl_dedup_image_tokens(prompt_ids, self.processor)
         prompt = TokensPrompt(
             prompt_token_ids=prompt_ids, multi_modal_data={"image": image_data} if image_data else None
+=======
+        prompt = TokensPrompt(prompt_token_ids=prompt_ids)
+        # Attach LoRA request explicitly if our stable adapter is loaded
+        lora_request = None
+        try:
+            lora_ids = await self.engine.list_loras()
+            if lora_ids is not None:
+                try:
+                    logger.info(f"Async server generation sees adapters={sorted(list(lora_ids))}")
+                except Exception:
+                    pass
+            if 1 in lora_ids:
+                lora_request = LoRARequest(lora_name="1", lora_int_id=1, lora_path="/simon-stub-path")
+                logger.info("Async server generation using pinned LoRA id=1")
+            else:
+                if lora_ids:
+                    fallback_id = max(lora_ids)
+                    logger.warning(
+                        f"Pinned LoRA id=1 not found; falling back to latest id={fallback_id}"
+                    )
+                    lora_request = LoRARequest(lora_name=f"{fallback_id}", lora_int_id=fallback_id, lora_path="/simon-stub-path")
+        except Exception:
+            pass
+        generator = self.engine.generate(
+            prompt=prompt,
+            sampling_params=sampling_params,
+            request_id=request_id,
+            lora_request=lora_request,
+>>>>>>> Stashed changes
         )
         generator = self.engine.generate(prompt=prompt, sampling_params=sampling_params, request_id=request_id)
 

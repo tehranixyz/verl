@@ -326,6 +326,7 @@ class vLLMRollout(BaseRollout):
             }
 
         lora_requests = None
+<<<<<<< Updated upstream
         if self.lora_kwargs:
             lora_int_ids = list(self.inference_engine.llm_engine.list_loras())
             if len(lora_int_ids) > 0:
@@ -333,6 +334,28 @@ class vLLMRollout(BaseRollout):
                 lora_requests = [
                     LoRARequest(lora_name=f"{lora_int_id}", lora_int_id=lora_int_id, lora_path="/simon-stub-path")
                 ] * batch_size
+=======
+        # Always attempt to use latest loaded LoRA adapter if LoRA is enabled
+        try:
+            engine = None
+            if hasattr(self.inference_engine, "llm_engine"):
+                engine = self.inference_engine.llm_engine
+            elif hasattr(self.inference_engine, "worker"):
+                engine = self.inference_engine.worker
+            elif hasattr(self.inference_engine, "list_loras"):
+                engine = self.inference_engine
+            if engine is not None and hasattr(engine, "list_loras"):
+                lora_ids = list(engine.list_loras())
+                if lora_ids:
+                    # Prefer stable id 1 if present, else choose the latest id
+                    lora_int_id = 1 if 1 in lora_ids else max(lora_ids)
+                    lora_requests = [
+                        LoRARequest(lora_name=f"{lora_int_id}", lora_int_id=lora_int_id, lora_path="/tensor-lora")
+                    ] * batch_size
+        except Exception:
+            # Best-effort: proceed without LoRA if listing fails
+            pass
+>>>>>>> Stashed changes
 
         # users can customize different sampling_params at different run
         with self.update_sampling_params(**kwargs):
